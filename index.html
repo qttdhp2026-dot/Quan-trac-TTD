@@ -11,12 +11,14 @@
         .header h1 { font-size: 1.3rem; color: #38bdf8; margin-bottom: 10px; text-transform: uppercase; }
         .status-bar { display: flex; justify-content: space-between; font-size: 0.85rem; color: #94a3b8; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
-        .card { background: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid #38bdf8; border-top: 1px solid #334155; border-right: 1px solid #334155; border-bottom: 1px solid #334155; }
-        .card-title { font-size: 0.9rem; color: #cbd5e1; font-weight: bold; }
-        .card-value { font-size: 1.8rem; font-weight: bold; color: #4ade80; margin: 10px 0; }
+        .card { background: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid #38bdf8; border: 1px solid #334155; }
+        .card-title { font-size: 0.95rem; color: #cbd5e1; font-weight: bold; margin-bottom: 5px; }
+        .card-subtitle { font-size: 0.8rem; color: #94a3b8; margin-bottom: 10px; }
+        .card-value { font-size: 1.5rem; font-weight: bold; color: #4ade80; margin: 10px 0; }
         .card-unit { font-size: 0.9rem; color: #94a3b8; font-weight: normal; }
         .card-status { display: inline-block; background: #166534; color: #4ade80; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
-        .loading { text-align: center; padding: 30px; color: #38bdf8; font-size: 1.1rem; }
+        .loading { text-align: center; padding: 30px; color: #38bdf8; font-size: 1.1rem; grid-column: 1 / -1; }
+        .indicators-list { font-size: 0.85rem; color: #38bdf8; word-break: break-word; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -30,14 +32,14 @@
     </div>
 
     <div id="content" class="grid">
-        <div class="loading">Đang tải dữ liệu từ máy chủ Sở TN&MT...</div>
+        <div class="loading">Đang tải dữ liệu từ máy chủ...</div>
     </div>
 
     <script>
-        const API_KEY = "f6401302-6f65-48aa-8054-63429daad20d";
-        const API_URL = "https://haiphong-envisoft.tedp.vn/api/partner/v1/announce-waste-hour";
+        const API_TOKEN = "f6401302-6f65-48aa-8054-63429daad20d";
+        const BASE_API_URL = "https://haiphong-envisoft.tedp.vn/api/partner/v1/announce-waste-hour";
 
-        // Nhập Tên/Mã Trạm muốn lọc (ví dụ: "DLV1.1-2111044"). Để trống "" nếu muốn hiển thị tất cả.
+        // Nhập Mã Trạm hoặc Tên Trạm muốn lọc (Ví dụ: "Vĩnh Niệm", "Vinfast", "Đình Vũ" hoặc để "" để hiện tất cả)
         const TARGET_STATION = ""; 
 
         async function loadData() {
@@ -52,59 +54,72 @@
                 const fromStr = yesterday.toISOString().split('.')[0];
                 const toStr = now.toISOString().split('.')[0];
 
-                const directUrl = `${API_URL}?page=0&size=200&apiType=7&from=${fromStr}&to=${toStr}`;
+                const targetUrl = `${BASE_API_URL}?page=0&size=100&apiType=7&from=${fromStr}&to=${toStr}&access_token=${API_TOKEN}`;
                 
-                // Đi qua CORS Proxy để giải quyết rào cản trình duyệt
-                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
+                // Sử dụng AllOrigins Proxy giúp bỏ qua chặn CORS đáng tin cậy hơn
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
-                const response = await fetch(proxyUrl, {
-                    method: 'GET',
-                    headers: {
-                        'accept': 'application/json',
-                        'X-API-KEY': API_KEY
-                    }
-                });
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`HTTP code: ${response.status}`);
 
-                if (!response.ok) throw new Error(`Lỗi HTTP: ${response.status}`);
-
-                const res = await response.json();
+                const proxyData = await response.json();
+                
+                // Parse dữ liệu nhận về từ Proxy
+                let res = typeof proxyData.contents === 'string' ? JSON.parse(proxyData.contents) : proxyData.contents;
+                
                 container.innerHTML = '';
 
-                let items = res.data || res.content || res.result || (Array.isArray(res) ? res : []);
+                // Hỗ trợ lấy dữ liệu từ nhiều dạng JSON response khác nhau
+                let items = Array.isArray(res) ? res : (res.data || res.content || res.result || []);
 
+                // Lọc dữ liệu theo TARGET_STATION
                 if (TARGET_STATION.trim() !== "") {
+                    const target = TARGET_STATION.toLowerCase();
                     items = items.filter(item => {
                         const stName = (item.stationName || "").toLowerCase();
                         const stCode = (item.stationCode || "").toLowerCase();
-                        const target = TARGET_STATION.toLowerCase();
                         return stName.includes(target) || stCode.includes(target);
                     });
                 }
 
                 if (items.length === 0) {
-                    container.innerHTML = '<div class="loading">Hiện chưa có dữ liệu quan trắc mới.</div>';
-                    statusElem.innerText = "Trạng thái: Không có dữ liệu mới";
+                    container.innerHTML = '<div class="loading">Hiện chưa có dữ liệu quan trắc trong khoảng thời gian này.</div>';
+                    statusElem.innerText = "Trạng thái: Không có dữ liệu";
                     statusElem.style.color = "#f9e2af";
                     return;
                 }
 
-                if (TARGET_STATION.trim() !== "" && items[0].stationName) {
-                    document.getElementById('station-title').innerText = `QUAN TRẮC MÔI TRƯỜNG - ${items[0].stationName}`;
-                }
-
+                // Hiển thị dữ liệu lên giao diện
                 items.forEach(item => {
-                    const title = item.parameterName || item.symbol || item.stationName || 'Thông số';
-                    const val = item.value !== undefined ? item.value : '-';
-                    const unit = item.unit || '';
-                    const stt = item.status || 'Đạt chuẩn';
+                    const stationName = item.stationName || item.stationCode || 'Trạm quan trắc';
+                    
+                    // Trường hợp 1: Dữ liệu chứa danh sách thông số (Dạng cấu hình JSON trạm)
+                    if (item.indicators && Array.isArray(item.indicators)) {
+                        const codeList = item.indicators.map(i => i.indicatorCode).join(', ');
+                        container.innerHTML += `
+                            <div class="card">
+                                <div class="card-title">${stationName}</div>
+                                <div class="card-subtitle">Mã: ${item.stationCode || 'N/A'}</div>
+                                <div class="indicators-list"><strong>Thông số:</strong> ${codeList}</div>
+                            </div>
+                        `;
+                    } 
+                    // Trường hợp 2: Dữ liệu trả về các chỉ số đo thực tế
+                    else {
+                        const title = item.parameterName || item.symbol || stationName;
+                        const val = item.value !== undefined ? item.value : '-';
+                        const unit = item.unit || '';
+                        const stt = item.status || 'Đạt chuẩn';
 
-                    container.innerHTML += `
-                        <div class="card">
-                            <div class="card-title">${title}</div>
-                            <div class="card-value">${val} <span class="card-unit">${unit}</span></div>
-                            <span class="card-status">${stt}</span>
-                        </div>
-                    `;
+                        container.innerHTML += `
+                            <div class="card">
+                                <div class="card-title">${title}</div>
+                                <div class="card-subtitle">${stationName}</div>
+                                <div class="card-value">${val} <span class="card-unit">${unit}</span></div>
+                                <span class="card-status">${stt}</span>
+                            </div>
+                        `;
+                    }
                 });
 
                 statusElem.innerText = "Trạng thái: Đã kết nối thành công";
@@ -112,15 +127,19 @@
                 updatedElem.innerText = `Cập nhật: ${now.toLocaleTimeString('vi-VN')} - ${now.toLocaleDateString('vi-VN')}`;
 
             } catch (err) {
-                console.error("Lỗi API:", err);
-                statusElem.innerText = "Trạng thái: Không thể kết nối API";
+                console.error("Lỗi kết nối:", err);
+                statusElem.innerText = "Trạng thái: Lỗi kết nối API / CORS";
                 statusElem.style.color = "#f87171";
-                container.innerHTML = '<div class="loading" style="color: #f87171;">Lỗi kết nối máy chủ Sở TN&MT. Lỗi CORS hoặc sai X-API-KEY.</div>';
+                container.innerHTML = `
+                    <div class="loading" style="color: #f87171;">
+                        Không thể kết nối trực tiếp từ Trình duyệt do chính sách CORS của Server.<br>
+                        <small style="color: #94a3b8; font-size: 0.85rem;">(Nếu chạy sản phẩm thực tế, bạn cần gọi API này từ Backend như Node.js/PHP/Python thay vì chạy trực tiếp trên file HTML HTML/JS client).</small>
+                    </div>`;
             }
         }
 
         loadData();
-        setInterval(loadData, 300000); // Tự động làm mới mỗi 5 phút
+        setInterval(loadData, 300000); // Tự động làm mới dữ liệu sau mỗi 5 phút
     </script>
 </body>
 </html>
