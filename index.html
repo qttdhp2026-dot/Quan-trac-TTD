@@ -52,10 +52,12 @@
                 const fromStr = yesterday.toISOString().split('.')[0];
                 const toStr = now.toISOString().split('.')[0];
 
-                const fullUrl = `${API_URL}?page=0&size=200&apiType=7&from=${fromStr}&to=${toStr}`;
+                const directUrl = `${API_URL}?page=0&size=200&apiType=7&from=${fromStr}&to=${toStr}`;
+                
+                // Đi qua CORS Proxy để giải quyết rào cản trình duyệt
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
 
-                // Cấu hình chuẩn Header X-API-KEY theo tài liệu API mới nhất của bạn
-                const response = await fetch(fullUrl, {
+                const response = await fetch(proxyUrl, {
                     method: 'GET',
                     headers: {
                         'accept': 'application/json',
@@ -70,7 +72,6 @@
 
                 let items = res.data || res.content || res.result || (Array.isArray(res) ? res : []);
 
-                // Lọc trạm cụ thể nếu được thiết lập
                 if (TARGET_STATION.trim() !== "") {
                     items = items.filter(item => {
                         const stName = (item.stationName || "").toLowerCase();
@@ -114,12 +115,12 @@
                 console.error("Lỗi API:", err);
                 statusElem.innerText = "Trạng thái: Không thể kết nối API";
                 statusElem.style.color = "#f87171";
-                container.innerHTML = '<div class="loading" style="color: #f87171;">Lỗi kết nối máy chủ Sở TN&MT. Hãy kiểm tra lại kết nối mạng hoặc Key.</div>';
+                container.innerHTML = '<div class="loading" style="color: #f87171;">Lỗi kết nối máy chủ Sở TN&MT. Lỗi CORS hoặc sai X-API-KEY.</div>';
             }
         }
 
         loadData();
-        setInterval(loadData, 300000); // Tự động cập nhật mỗi 5 phút
+        setInterval(loadData, 300000); // Tự động làm mới mỗi 5 phút
     </script>
 </body>
 </html>
